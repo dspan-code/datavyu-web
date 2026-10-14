@@ -1,0 +1,6 @@
+# 开发/测试的临时产物（金标准夹具要保留并提交，见 _fixtures/README.md）
+_fixtures/*.tmp
+*.log
+.DS_Store
+__pycache__/
+node_modules/

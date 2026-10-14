@@ -1,0 +1,4 @@
+gesture.ordinal,gesture.onset,gesture.offset,gesture.code01,gesture.code02,hidden_col.ordinal,hidden_col.onset,hidden_col.offset,hidden_col.value,my-notes.ordinal,my-notes.onset,my-notes.offset,my-notes.value,paren (name).ordinal,paren (name).onset,paren (name).offset,paren (name).value
+0,00:00:01:000,00:00:02:000,"look","at, me",0,00:10:00:000,01:01:01:500,"x|y(z)",0,00:00:00:000,00:00:02:500,"他说""你好"", 然后走了",,,,,
+,,,,,,,,,1,00:00:03:000,00:00:04:000,"",,,,,
+,,,,,,,,,2,00:00:05:000,00:00:05:000,"single frame tag",,,,,

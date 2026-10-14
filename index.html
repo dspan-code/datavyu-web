@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datavyu 网页版 · 视频行为编码</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234ea1ff'/%3E%3Ctext x='16' y='22' font-size='15' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'%3EDV%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ───────────────────────── 顶栏 ───────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">DV</span>
+      <div>
+        <div class="title">Datavyu 网页版</div>
+        <div class="sub">视频行为编码 · 零依赖 · 离线可用</div>
+      </div>
+    </div>
+
+    <nav class="menus">
+      <div class="menu" data-menu="file">
+        <button class="menu-btn" aria-haspopup="true">文件</button>
+        <div class="menu-pop">
+          <button data-act="new">新建工程 <kbd>⌘N</kbd></button>
+          <button data-act="open">打开… <kbd>⌘O</kbd></button>
+          <hr>
+          <button data-act="save-opf">保存工程 .opf <kbd>⌘S</kbd></button>
+          <button data-act="export-cells">导出 · 每行一个 cell CSV</button>
+          <button data-act="export-frames">导出 · 逐帧 CSV</button>
+          <button data-act="export-json">导出 · 本程序 JSON</button>
+          <hr>
+          <button data-act="clear-local" class="danger">清除浏览器本地存档</button>
+        </div>
+      </div>
+
+      <div class="menu" data-menu="edit">
+        <button class="menu-btn" aria-haspopup="true">编辑</button>
+        <div class="menu-pop">
+          <button data-act="undo">撤销 <kbd>⌘Z</kbd></button>
+          <button data-act="redo">重做 <kbd>⇧⌘Z</kbd></button>
+        </div>
+      </div>
+
+      <div class="menu" data-menu="sheet">
+        <button class="menu-btn" aria-haspopup="true">工作表</button>
+        <div class="menu-pop">
+          <button data-act="add-column">新建列… <kbd>⌘K</kbd></button>
+          <button data-act="toggle-align">时间对齐 <kbd>⌘T</kbd></button>
+          <button data-act="show-all">显示所有列</button>
+          <button data-act="zoom-in">放大 <kbd>⌘+</kbd></button>
+          <button data-act="zoom-out">缩小 <kbd>⌘-</kbd></button>
+          <button data-act="zoom-reset">重置缩放 <kbd>⌘0</kbd></button>
+          <hr>
+          <button data-act="side-toggle">显示/隐藏列管理面板</button>
+          <button data-act="timeline-toggle">显示/隐藏时间轴</button>
+        </div>
+      </div>
+
+      <div class="menu" data-menu="help">
+        <button class="menu-btn" aria-haspopup="true">帮助</button>
+        <div class="menu-pop">
+          <button data-act="help-keys">快捷键一览</button>
+          <button data-act="help-about">关于 / 兼容性说明</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="spacer"></div>
+
+    <div class="topstatus">
+      <span class="pill" id="pill-file" title="当前工程名">未命名</span>
+      <span class="pill dim" id="pill-format" title="保存格式">.opf</span>
+      <span class="pill" id="pill-dirty" hidden>未保存</span>
+    </div>
+  </header>
+
+  <!-- ───────────────────────── 播放器 ───────────────────────── -->
+  <section class="player" id="player">
+    <div class="video-wrap" id="video-wrap">
+      <video id="video" playsinline></video>
+      <div class="video-empty" id="video-empty">
+        <div class="ve-inner">
+          <p class="ve-title">还没有加载视频</p>
+          <p class="ve-hint">把视频文件拖到这里，或点下面的按钮。视频只在本机浏览器里播放，不上传任何地方。</p>
+          <button class="btn primary" id="btn-pick-video">选择视频文件</button>
+        </div>
+      </div>
+      <div class="video-hud">
+        <span class="hud-tc" id="hud-tc">00:00:00:000</span>
+        <span class="hud-fps" id="hud-fps">30 fps</span>
+      </div>
+    </div>
+
+    <div class="controller">
+      <div class="ctl-row">
+        <button class="btn" id="btn-start" title="跳到开头 (Home)">⏮</button>
+        <button class="btn" id="btn-back1s" title="后退 1 秒 (J)">⟪</button>
+        <button class="btn" id="btn-backframe" title="后退一帧 (←)">◀|</button>
+        <button class="btn play" id="btn-play" title="播放/暂停 (空格)">▶</button>
+        <button class="btn" id="btn-fwdframe" title="前进一帧 (→)">|▶</button>
+        <button class="btn" id="btn-fwd1s" title="前进 1 秒 (L)">⟫</button>
+        <button class="btn" id="btn-end" title="跳到结尾 (End)">⏭</button>
+      </div>
+
+      <input type="range" id="seek" min="0" max="0" step="1" value="0" aria-label="播放进度">
+
+      <div class="ctl-row wrap">
+        <label class="field">
+          <span>帧率</span>
+          <input type="number" id="fps" value="30" min="1" max="240" step="0.001">
+        </label>
+        <label class="field">
+          <span>倍速</span>
+          <select id="rate">
+            <option>0.25</option><option>0.5</option><option selected>1</option>
+            <option>1.5</option><option>2</option><option>4</option><option>8</option>
+          </select>
+        </label>
+        <label class="field grow">
+          <span>时间码</span>
+          <input type="text" id="tc-input" value="00:00:00:000" spellcheck="false"
+                 title="输入 hh:mm:ss:mmm 或纯毫秒后回车跳转">
+        </label>
+        <button class="btn mark" id="btn-set-onset" title="把选中行的起点设为播放头 (I)">设起点 <kbd>I</kbd></button>
+        <button class="btn mark" id="btn-set-offset" title="把选中行的终点设为播放头 (O)">设终点 <kbd>O</kbd></button>
+        <button class="btn mark" id="btn-new-cell" title="在播放头处新建行 (⌘N 之外的 N)">新建行 <kbd>N</kbd></button>
+      </div>
+
+      <div class="ctl-row wrap">
+        <span class="ctl-label">视频来源</span>
+        <input type="text" id="media-url" placeholder="粘贴视频直链 (https://…)，或直接选本地文件" spellcheck="false">
+        <button class="btn" id="btn-load-url">加载直链</button>
+        <button class="btn" id="btn-pick-video2">本地文件…</button>
+        <span class="media-name" id="media-name">未加载</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="splitter" id="splitter-player" title="拖动调整高度"></div>
+
+  <!-- ───────────────────────── 主体 ───────────────────────── -->
+  <section class="main">
+    <!-- 列管理 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="side-head">
+        <span>列管理</span>
+        <button class="mini" id="btn-add-column" title="新建列">＋</button>
+      </div>
+      <div class="side-list" id="column-manager"></div>
+      <div class="side-foot">
+        <label class="chk"><input type="checkbox" id="chk-align" checked> 时间对齐</label>
+        <label class="chk"><input type="checkbox" id="chk-live" checked> 播放跟随高亮</label>
+      </div>
+    </aside>
+
+    <!-- 表格 + 时间轴 -->
+    <div class="sheet-area">
+      <div class="sheet-head">
+        <span class="sheet-title" id="sheet-title">工作表</span>
+        <div class="spacer"></div>
+        <span class="hint" id="sheet-hint">双击值可编辑 · 拖动时间码可微调 · Tab 跳下一格</span>
+      </div>
+
+      <div class="grid-scroll" id="grid-scroll">
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <div class="splitter h" id="splitter-timeline" title="拖动调整时间轴高度"></div>
+
+      <div class="timeline" id="timeline">
+        <div class="timeline-head">
+          <span>时间轴</span>
+          <div class="spacer"></div>
+          <span class="hint">拖动色块两端调整起止 · 点击色块跳转</span>
+        </div>
+        <div class="timeline-body" id="timeline-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="statusbar">
+    <span id="st-cols">列 0</span>
+    <span id="st-cells">行 0</span>
+    <span id="st-time">播放头 00:00:00:000</span>
+    <span id="st-span">跨度 0 ms</span>
+    <span class="spacer"></span>
+    <span id="st-msg" class="msg"></span>
+  </footer>
+</div>
+
+<!-- 新建列对话框 -->
+<dialog id="dlg-column">
+  <form method="dialog" class="dlg">
+    <h3>新建列</h3>
+    <label class="field">
+      <span>列名</span>
+      <input type="text" id="dlg-col-name" placeholder="字母/数字/下划线/连字符，不能以数字或下划线开头" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>类型</span>
+      <select id="dlg-col-type">
+        <option value="TEXT">TEXT — 自由文本（最常用，就是「笔记」）</option>
+        <option value="NOMINAL">NOMINAL — 单值分类</option>
+        <option value="MATRIX">MATRIX — 多子码（每个子码一个值）</option>
+      </select>
+    </label>
+    <label class="field" id="dlg-codes-row" hidden>
+      <span>子码</span>
+      <input type="text" id="dlg-col-codes" value="code01, code02" placeholder="逗号分隔">
+    </label>
+    <p class="dlg-note">列名唯一性与命名规则会在提交时校验（原版 Datavyu 会静默覆盖，这里直接报错）。</p>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn">取消</button>
+      <button value="ok" class="btn primary" id="dlg-col-ok">创建</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 通用说明对话框 -->
+<dialog id="dlg-info">
+  <div class="dlg">
+    <h3 id="info-title">说明</h3>
+    <div id="info-body" class="info-body"></div>
+    <div class="dlg-actions"><button class="btn primary" id="info-close">知道了</button></div>
+  </div>
+</dialog>
+
+<input type="file" id="file-input" hidden>
+
+<!-- 依赖顺序：先 util，再 model / zip，再 db4 / opf / store，最后界面 -->
+<script src="lib/util.js"></script>
+<script src="lib/zip.js"></script>
+<script src="lib/model.js"></script>
+<script src="lib/db4.js"></script>
+<script src="lib/opf.js"></script>
+<script src="lib/store.js"></script>
+<script src="ui/timeutil.js"></script>
+<script src="ui/video.js"></script>
+<script src="ui/grid.js"></script>
+<script src="ui/timeline.js"></script>
+<script src="ui/app.js"></script>
+</body>
+</html>
