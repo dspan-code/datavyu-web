@@ -198,8 +198,19 @@ async function connect(port, target, timeoutMs = 20000) {
 
 /* ------------------------------------------------------------------ 主流程 */
 
-const { server, port, served, base } = await startServer();
-console.log(`静态服务：${base}`);
+/* 支持对「已经部署好的线上站点」跑同一套测试：
+ *   node verify-web.mjs --url=https://dspan-code.github.io/datavyu-web/
+ * 这时跳过本地服务，直接对着公网地址断言真实 DOM。
+ * 这是最接近用户的验证方式（公开站点 + 真实网络）。 */
+const urlArg = process.argv.find((a) => a.startsWith("--url="));
+const remoteBase = urlArg ? urlArg.slice("--url=".length).replace(/\/$/, "") : null;
+
+const local = remoteBase ? null : await startServer();
+const server = local ? local.server : { close() {} };
+const port = local ? local.port : 0;
+const served = local ? local.served : new Map();
+const base = remoteBase || local.base;
+console.log(remoteBase ? `目标站点（线上）：${base}` : `静态服务：${base}`);
 
 if (NO_BROWSER) {
   console.log("（--no-browser：只起服务，Ctrl+C 结束）");
@@ -273,10 +284,19 @@ if (NO_BROWSER) {
       }
     }
 
-    section("静态资源");
-    const missing = [...served.entries()].filter(([p, code]) => code === 404 && p !== "/favicon.ico").map(([p]) => p);
-    eq("无 404 资源", missing.join(","), "");
-    ok("index.html 被请求", served.get("/index.html") === 200);
+    if (!remoteBase) {
+      section("静态资源（本地服务）");
+      const missing = [...served.entries()].filter(([p, code]) => code === 404 && p !== "/favicon.ico").map(([p]) => p);
+      eq("无 404 资源", missing.join(","), "");
+      ok("index.html 被请求", served.get("/index.html") === 200);
+    } else {
+      section("静态资源（线上站点）");
+      for (const f of ["/index.html", "/css/app.css", "/lib/zip.js", "/lib/db4.js", "/lib/opf.js",
+                       "/lib/store.js", "/ui/app.js", "/ui/video.js", "/ui/grid.js", "/ui/timeline.js", "/ui/timeutil.js"]) {
+        const r = await fetch(base + f, { method: "GET" });
+        ok(`GET ${f} -> ${r.status}`, r.status === 200);
+      }
+    }
   }
 }
 
