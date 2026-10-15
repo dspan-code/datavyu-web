@@ -21,6 +21,7 @@
     pillFormat: $("pill-format"),
     pillDirty: $("pill-dirty"),
     // 播放器
+    player: $("player"),
     video: $("video"),
     videoWrap: $("video-wrap"),
     videoEmpty: $("video-empty"),
@@ -53,6 +54,10 @@
     columnManager: $("column-manager"),
     chkAlign: $("chk-align"),
     chkLive: $("chk-live"),
+    // 打点条
+    markStrip: $("mark-chips"),
+    markNow: $("mark-now"),
+    markHint: $("mark-hint"),
     // 时间轴
     timeline: $("timeline"),
     timelineBody: $("timeline-body"),
@@ -91,6 +96,15 @@
   /* ------------------------------------------------------ 挂载子系统 */
 
   const video = globalThis.DVY.ui.video.mount(store, els);
+  // 打点条负责消费数字键（打点）。onMarked 在「一笔打点刚刚落库」之后被调用，
+  // 用来把光标直接送进新行的值里（打完就能打字，不用再点一下）
+  const markstrip = globalThis.DVY.ui.markstrip.mount(store, {
+    ...els,
+    onMarked: (colId, cellId) => {
+      if (grid.isEditing()) return; // 用户正在别处打字，别抢
+      grid.requestEdit(colId, cellId, null);
+    },
+  });
   const grid = globalThis.DVY.ui.grid.mount(store, {
     ...els,
     onAddColumn: () => openColumnDialog(),
@@ -106,6 +120,7 @@
     ...els,
     onSeek: (ms) => video.seekTo(ms),
   });
+
 
   store.setFps(els.fps.value);
 
@@ -251,6 +266,15 @@
     els.fileInput.value = "";
   });
 
+  // 换数据（新建/打开/撤销）之前必须先结束编辑，否则会留下悬挂编辑器，
+  // 让之后的渲染全部被推迟
+  ["new", "open"].forEach(() => {});
+  store.on("db", (p) => {
+    if (p && typeof p.label === "string" && (p.label === "新建" || p.label.startsWith("打开 "))) {
+      grid.endEdit();
+    }
+  });
+
   /* ------------------------------------------------------- 新建列对话框 */
 
   function openColumnDialog() {
@@ -298,6 +322,9 @@
       <tr><td>跳到开头 / 结尾</td><td><code>Home</code> / <code>End</code></td></tr>
       <tr><td>把选中行的起点设为播放头</td><td><code>I</code></td></tr>
       <tr><td>把选中行的终点设为播放头</td><td><code>O</code></td></tr>
+      <tr><td><strong>打点：开始 / 结束某个行为</strong></td><td><code>1</code>…<code>9</code> <code>0</code></td></tr>
+      <tr><td>放弃正在录制的打点</td><td><code>Esc</code></td></tr>
+      <tr><td>视频全屏 / 退出全屏</td><td><code>F</code></td></tr>
       <tr><td>在播放头新建行</td><td><code>N</code></td></tr>
       <tr><td>在选中行之后 / 之前新建</td><td><code>⌘R</code> / <code>⌘L</code></td></tr>
       <tr><td>删除选中行</td><td><code>Delete</code></td></tr>
@@ -392,6 +419,18 @@
       grid.setAligned(next);
       msg(next ? "时间对齐：开" : "时间对齐：关");
     },
+    "mark-register"() {
+      const col = store.selectedColumn;
+      if (!col) return msg("先在左侧或表格里选中一列", "err");
+      if (store.markColumns.includes(col.id)) return msg(`${col.name} 已经在打点条上了`, "");
+      store.registerMark(col.id, true);
+      msg(`已把 ${col.name} 放到打点条（数字键 ${Math.min(store.markColumns.length, 10)}）`, "ok");
+    },
+    "mark-clear"() {
+      if (!store.markColumns.length) return;
+      store.setMarkColumns([]);
+      msg("打点条已清空（列和数据都保留）", "ok");
+    },
     "show-all"() {
       store.apply("显示所有列", (db) => db.columns.forEach((c) => (c.hidden = false)));
       msg("已显示所有列", "ok");
@@ -481,6 +520,12 @@
 
   document.addEventListener("keydown", (e) => {
     if (isTyping(e.target)) return;
+
+    // 打点条优先：数字键 1-9/0 打点、Esc 放弃录制。
+    // 它返回 true 表示这个键已被消费，后面的逻辑不再处理。
+    // （这样"数字键打点"和 app 自己的快捷键不会互相打架）
+    if (markstrip.handleKey(e)) return;
+
     const col = store.selectedColumn;
     const cell = store.selectedCell;
     const mod = e.metaKey || e.ctrlKey;
@@ -548,6 +593,22 @@
     }
 
     switch (e.key) {
+      case "f":
+      case "F":
+        e.preventDefault();
+        video.toggleFullscreen();
+        break;
+      case "Escape":
+        // 全屏时 Esc 先退全屏；不在全屏时交给打点条去放弃录制
+        if (video.isFullscreen) {
+          e.preventDefault();
+          video.toggleFullscreen(false);
+        } else if (store.markingCount) {
+          e.preventDefault();
+          store.cancelMark();
+          msg("已放弃正在录制的打点", "");
+        }
+        break;
       case " ":
         e.preventDefault();
         video.togglePlay();
@@ -663,6 +724,7 @@
    */
   function loadDemo() {
     store.newProject("示例工程");
+    const created = [];
     store.apply("载入示例数据", (db) => {
       const mk = (name, type, codes, rows) => {
         const col = db.addColumn(name, type, codes, codes ? codes.map(() => "NOMINAL") : null);
@@ -685,7 +747,10 @@
         [500, 1500, "咿呀发声"], [3000, 3600, "笑"], [6600, 7200, "叫妈妈"],
       ]);
       mk("notes", "TEXT", null, [[0, 400, "起点：母亲进入画面"]]);
+      created.push(...db.columns.map((c) => c.id));
     });
+    // 示例工程顺手把前四列注册到打点条，这样 ?demo=1 一眼就能看到「按数字键打点」是怎么回事
+    store.setMarkColumns(created.slice(0, 4));
     store.dirty = false;
     store.time = 0;
     store.clearAutosave();
@@ -706,5 +771,5 @@
   }
 
   // 暴露给控制台/自动化测试
-  globalThis.DVY.app = { store, video, grid, timeline, actions };
+  globalThis.DVY.app = { store, video, grid, timeline, markstrip, actions };
 })();

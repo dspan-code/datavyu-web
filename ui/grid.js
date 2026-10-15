@@ -25,10 +25,89 @@
     let drag = null;
     const MAX_ALIGNED = 400;
 
+    // 编辑辅助：按「列 → 时间排序后的行序」定位一个 cell，用于 Tab / 方向键跳格和外部请求编辑
+    let editIndex = new Map(); // colId -> cell 数组（已排序）
+    let pendingEdit = null; // { colId, cellId, codeIndex }
+    let focusCell = null; // { colId, cellId } —— 键盘操作后要聚焦/滚动到的 cell
+    let activeEditor = null; // 正在编辑的 DOM 节点，用于「编辑期间不重建 DOM」
+    let renderQueued = false; // 有渲染请求被推迟了
+
+    function isEditing() {
+      return !!activeEditor;
+    }
+
+    /** 编辑期间推迟重建：否则正在输入的框会被换掉，键入丢失 */
+    function queueRender() {
+      renderQueued = true;
+    }
+    function flushQueuedRender() {
+      if (!renderQueued) return;
+      if (activeEditor) return; // 还在编辑，继续等
+      renderQueued = false;
+      render();
+    }
+
+    /**
+     * 强制结束当前编辑（不提交）。
+     * 必须在「整表换数据」的场景调用：newProject / 打开文件 / 撤销。
+     * 否则会留下一个悬挂的 activeEditor，让后续渲染全部被推迟 ——
+     * 现象是"表格停在上一个项目的内容上"，非常难查（这个坑踩过一次）。
+     */
+    function endEdit() {
+      if (activeEditor && activeEditor.blur) activeEditor.blur();
+      activeEditor = null;
+      // 兜底：万一有人把编辑器节点直接从 DOM 里摘掉了（blur 不会触发），也要清掉
+      const stale = els.grid.querySelector(".cb-val.editing");
+      if (stale) {
+        stale.contentEditable = "false";
+        stale.classList.remove("editing");
+      }
+    }
+
     function span() {
       const r = store.db.timeRange;
       const end = Math.max(r.end, r.start + 1000);
       return { start: r.start, end };
+    }
+
+    /* -------------------------------------------------------- 编辑辅助 */
+
+    function columnCells(col) {
+      return editIndex.get(col.id) || col.sorted();
+    }
+
+    function startEdit(col, cell, codeIndex) {
+      requestEdit(col.id, cell.id, codeIndex);
+    }
+
+    /** 供外部（打点条/菜单/快捷键）请求打开某个 cell 的编辑器 */
+    function requestEdit(columnId, cellId, codeIndex = null) {
+      pendingEdit = { colId: columnId, cellId, codeIndex };
+      render();
+    }
+
+    function afterRenderFocus() {
+      if (pendingEdit) {
+        const col = store.db.getColumnById(pendingEdit.colId);
+        const cell = col && col.getCell(pendingEdit.cellId);
+        if (col && cell) {
+          const box = els.grid.querySelector(`.cellbox[data-cell-id="${cell.id}"]`);
+          if (box) {
+            const target = box.querySelector(".cb-val");
+            if (target) startValueEdit(target, col, cell, pendingEdit.codeIndex);
+          }
+        }
+        pendingEdit = null;
+        return;
+      }
+      if (focusCell) {
+        const box = els.grid.querySelector(`.cellbox[data-cell-id="${focusCell.cellId}"]`);
+        if (box) {
+          box.scrollIntoView({ block: "nearest", inline: "nearest" });
+          if (focusCell.fromTime) scrollToTime(store.time);
+        }
+        focusCell = null;
+      }
     }
 
     /* ---------------------------------------------------- 泳道分配算法 */
@@ -62,6 +141,17 @@
     /* ------------------------------------------------------------ 渲染 */
 
     function render() {
+      // 编辑器节点如果已经不在文档里（被上一次重建摘掉），就不能再算"正在编辑"，
+      // 否则渲染会被永久推迟
+      if (activeEditor && !document.contains(activeEditor)) {
+        activeEditor = null;
+      }
+      if (activeEditor) {
+        // 编辑期间数据可能变了（比如打点落了库），但先把这次渲染记下来，
+        // 等编辑结束再补 —— 绝不能把正在输入的 DOM 换掉
+        queueRender();
+        return;
+      }
       const grid = els.grid;
       const db = store.db;
       if (!db.columns.length) {
@@ -80,8 +170,15 @@
         return;
       }
 
+      // 能走到这里是「没有活跃编辑器」，所以 DOM 里残留的 editing 类一定是孤儿
+      const orphan = grid.querySelector(".cb-val.editing");
+      if (orphan) {
+        orphan.contentEditable = "false";
+        orphan.classList.remove("editing");
+      }
       const vis = db.columns.filter((c) => !c.hidden);
       const columns = vis.length ? vis : db.columns;
+      editIndex = new Map(columns.map((c) => [c.id, c.sorted()]));
       const { start, end } = span();
       const totalMs = end - start;
       const width = GUTTER + columns.length * COL_W;
@@ -226,6 +323,7 @@
       grid.innerHTML = "";
       grid.appendChild(frag);
       els.sheetTitle.textContent = db.name || "工作表";
+      afterRenderFocus();
     }
 
     /* ------------------------------------------------------- 单个 cell */
@@ -234,6 +332,9 @@
       const box = document.createElement("div");
       box.className = "cellbox" + (cell.id === store.selectedCellId ? " sel" : "");
       box.dataset.cellId = cell.id;
+      box.dataset.colId = col.id;
+      box.tabIndex = 0; // 让方向键/回车能用（单击即可聚焦）
+      box.title = "单击选中 · 再单击值进入编辑 · 方向键跳格 · ⌘↑ 复制上一行的值";
       box.style.borderLeftColor = T.colorFor(col.name);
       if (geo.stacked) {
         box.style.position = "relative";
@@ -277,11 +378,19 @@
       bindTimeDrag(on, col, cell, "onset");
       bindTimeDrag(off, col, cell, "offset");
       bindEdgeDrag(handle, col, cell);
-      val.addEventListener("dblclick", () => startValueEdit(val, col, cell));
-      val.addEventListener("click", (e) => {
+
+      // 编辑入口从「双击」改成「单击值」——用户反馈双击不好使。
+      // 注意两个事件的先后：mousedown 先开编辑（此刻不改 store，所以不会触发重渲染把节点换掉），
+      // click 之后再走选中逻辑；select 触发的渲染会因为「正在编辑」被推迟。
+      val.addEventListener("mousedown", (e) => {
         if (val.classList.contains("editing")) return;
-        if (e.detail === 2) return;
-        store.select(col.id, cell.id);
+        if (window.getSelection && String(window.getSelection()).length) return; // 正在选文字，别抢
+        e.preventDefault();
+        startValueEdit(val, col, cell);
+      });
+      val.addEventListener("click", (e) => {
+        if (e.target !== val && val.contains(e.target) && val.isContentEditable) return;
+        store.select(col.id, cell.id); // 渲染被推迟，不会打断上面的编辑
       });
 
       return box;
@@ -322,20 +431,37 @@
 
     /* --------------------------------------------------------- 值编辑 */
 
-    function startValueEdit(node, col, cell) {
+    function startValueEdit(node, col, cell, codeIndex = null) {
       if (node.classList.contains("editing")) return;
+      activeEditor = node;
       node.classList.add("editing");
       node.contentEditable = "true";
       node.spellcheck = false;
+      node.title = "Enter 保存 · Shift+Enter 换行 · Esc 取消 · ⌘↑ 复制上一行";
       if (col.type === "MATRIX") {
-        // 矩阵列：每行一个子码，用「码: 值」的文本编辑，回车提交
+        // 矩阵列：每行一个子码，用「码: 值」的文本编辑，⌘Enter 提交
         node.textContent = col.codes.map((c, i) => `${c}: ${cell.value ? cell.value.get(i) : ""}`).join("\n");
       } else {
         node.textContent = cell.value ? cell.value.toString() : "";
       }
       node.focus();
       const range = document.createRange();
-      range.selectNodeContents(node);
+      if (codeIndex !== null && codeIndex !== undefined && col.type === "MATRIX") {
+        // 直接定位到被点的那一行子码，省一次手动移动光标
+        const lines = node.childNodes;
+        const line = lines[codeIndex];
+        if (line) {
+          const textLen = (line.textContent || "").length;
+          const textNode = line.firstChild;
+          if (textNode && textNode.nodeType === 3) range.setStart(textNode, textLen);
+          else range.selectNodeContents(line);
+          range.collapse(true);
+        } else {
+          range.selectNodeContents(node);
+        }
+      } else {
+        range.selectNodeContents(node);
+      }
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
@@ -369,16 +495,67 @@
         renderValue(node, col, cell);
       };
 
-      node.addEventListener("blur", commit, { once: true });
+      let cancelled = false;
+      const leave = () => {
+        activeEditor = null;
+        queueMicrotask(flushQueuedRender); // 编辑结束后把推迟的渲染补上
+      };
+      node.addEventListener(
+        "blur",
+        () => {
+          if (cancelled) {
+            node.contentEditable = "false";
+            node.classList.remove("editing");
+            renderValue(node, col, cell);
+            leave();
+            return;
+          }
+          commit();
+          leave();
+        },
+        { once: true },
+      );
       node.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
-          node.textContent = cell.value ? cell.value.toString() : "";
+          cancelled = true;
           node.blur();
+          return;
+        }
+        // ⌘/Ctrl + ↑：把上一行的值复制过来（重复编码非常常见，省一次输入）
+        if (e.key === "ArrowUp" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          const cells = columnCells(col);
+          const i = cells.findIndex((c) => c.id === cell.id);
+          const prev = i > 0 ? cells[i - 1] : null;
+          if (!prev) return;
+          if (col.type === "MATRIX") {
+            node.textContent = col.codes.map((c, k) => `${c}: ${prev.value ? prev.value.get(k) : ""}`).join("\n");
+          } else {
+            node.textContent = prev.value ? prev.value.toString() : "";
+          }
+          const r = document.createRange();
+          r.selectNodeContents(node);
+          const sl = window.getSelection();
+          sl.removeAllRanges();
+          sl.addRange(r);
+          store.emit("msg", { text: "已复制上一行的值（Enter 保存）", kind: "" });
+          return;
+        }
+        // Tab / ⇧Tab：保存并跳到下一格/上一格（像表格软件那样连续录）
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const dir = e.shiftKey ? -1 : 1;
+          commit();
+          moveSelection(dir);
           return;
         }
         if (col.type !== "MATRIX" && e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          node.blur();
+          commit();
+          node.contentEditable = "false";
+          node.classList.remove("editing");
+          moveSelection(1);
+          return;
         }
         if (col.type === "MATRIX" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
@@ -473,6 +650,40 @@
       });
     }
 
+    /* -------------------------------------------------- 选择与键盘导航 */
+
+    /** 在当前列的相邻 cell 之间移动选中（dir=+1 下一个，-1 上一个） */
+    function moveSelection(dir) {
+      const col = store.selectedColumn;
+      if (!col) return;
+      const cells = columnCells(col);
+      if (!cells.length) return;
+      const i = cells.findIndex((c) => c.id === store.selectedCellId);
+      const next = cells[Math.max(0, Math.min(cells.length - 1, (i < 0 ? 0 : i) + dir))];
+      if (!next) return;
+      store.select(col.id, next.id);
+      focusCell = { colId: col.id, cellId: next.id };
+    }
+
+    // 容器级键盘：↑↓ 上下行，←→ 只在没有 cell 被选中时让位给视频逐帧
+    els.grid.addEventListener("keydown", (e) => {
+      if (e.target.classList && e.target.classList.contains("editing")) return;
+      if (e.target.isContentEditable) return;
+      const col = store.selectedColumn;
+      if (!col) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        moveSelection(e.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      if (e.key === "Enter" && store.selectedCell) {
+        e.preventDefault();
+        e.stopPropagation();
+        startEdit(col, store.selectedCell, null);
+      }
+    });
+
     /* ------------------------------------------------------ 对外接口 */
 
     function setAligned(v) {
@@ -495,7 +706,22 @@
     store.on("sel", render);
     render();
 
-    return { render, setAligned, setZoom, scrollToTime, get aligned() { return aligned; }, get zoom() { return zoom; } };
+    return {
+      render,
+      setAligned,
+      setZoom,
+      scrollToTime,
+      requestEdit,
+      moveSelection,
+      isEditing,
+      endEdit,
+      get aligned() {
+        return aligned;
+      },
+      get zoom() {
+        return zoom;
+      },
+    };
   }
 
   globalThis.DVY = globalThis.DVY || {};

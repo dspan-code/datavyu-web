@@ -241,6 +241,27 @@
     store.on("play", render);
     store.on("frame", render);
 
+    /* -------------------------------------------------------- 全屏（应用内） */
+
+    /**
+     * 应用内全屏：给 .player 加 .fs，用 CSS 把它固定铺满视口。
+     * 为什么不用原生 Fullscreen API：
+     *   ① 不需要用户手势授权，按 F 就能用，编码时更顺手；
+     *   ② 不会把地址栏藏掉导致分不清窗口；
+     *   ③ 退出逻辑简单（再按一次 F 或 Esc）。
+     */
+    let isFullscreen = false;
+    function toggleFullscreen(force) {
+      const want = force === undefined ? !isFullscreen : !!force;
+      const playerEl = els.player || (els.videoWrap && els.videoWrap.closest(".player"));
+      if (!playerEl) return isFullscreen;
+      isFullscreen = want;
+      playerEl.classList.toggle("fs", want);
+      store.emit("fullscreen", { on: want });
+      store.emit("msg", { text: want ? "视频全屏：按 F 或 Esc 退出" : "已退出全屏", kind: "" });
+      return want;
+    }
+
     /* ------------------------------------------------------ 对外接口 */
 
     return {
@@ -255,6 +276,10 @@
       togglePlay,
       applyFps,
       applyRate,
+      toggleFullscreen,
+      get isFullscreen() {
+        return isFullscreen;
+      },
       get videoEl() {
         return video;
       },

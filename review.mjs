@@ -118,6 +118,16 @@ const GUARDS = [
     alsoMust: ["!video.src"],
   },
   {
+    id: "悬挂编辑态",
+    why:
+      "编辑器没关就换数据（新建/打开）时，grid 的 activeEditor 会一直挂着，" +
+      "导致所有后续渲染被推迟 —— 现象是「表格停在上一个项目的内容上」，极难查",
+    file: "ui/grid.js",
+    must: "function endEdit()",
+    alsoMust: ["!document.contains(activeEditor)"],
+    test: "编辑态是正常的",
+  },
+  {
     id: "单元素清单保留",
     why: "单条清单查询只剥掉一个最外层方括号，否则 `[[a],[b]]` 或 `[a]` 会错位",
     file: null, // 占位示例：本项目暂无此守卫，保留格式演示

@@ -500,6 +500,189 @@ async function runTests(cdp) {
   ok("时间轴可隐藏", toggle.tlHidden);
   eq("堆叠模式下 cell 仍渲染（导出段留下的 1 行）", toggle.cells, 1);
 
+  section("打点条：单击切换式打点 + 数字键 + 自动进编辑");
+  const mark = await cdp.eval(`(async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const app = DVY.app, store = app.store;
+    store.newProject("打点测试");
+    const out = {};
+    const gaze = store.addColumn("gaze", "NOMINAL");
+    const gest = store.addColumn("gesture", "TEXT");
+
+    // 默认注册前 4 列，但 newProject 清空了，这里手动注册两个
+    store.setMarkColumns([gaze.id, gest.id]);
+    out.chips = document.querySelectorAll("#mark-chips .mchip").length;
+    out.keys = [...document.querySelectorAll("#mark-chips .mchip .mkey")].map(e => e.textContent).join(",");
+    out.hint = document.getElementById("mark-hint").textContent;
+
+    // —— 鼠标单击：开始
+    store.setTime(1000);
+    document.querySelectorAll("#mark-chips .mchip")[0].click();
+    out.afterFirstClick = { marking: store.markingCount, cells: gaze.cells.length, rec: document.querySelectorAll("#mark-chips .mchip.rec").length };
+
+    // —— 再单击：结束，应生成一行并自动进入编辑
+    store.setTime(2500);
+    document.querySelectorAll("#mark-chips .mchip")[0].click();
+    out.afterSecondClick = { marking: store.markingCount, cells: gaze.cells.length };
+    const c0 = gaze.cells[0];
+    out.cell = { onset: c0.onset, offset: c0.offset };
+    // 「打完自动进编辑」排在 microtask 里，等它落地再查
+    await tick();
+    let editing = document.querySelector("#grid .cb-val.editing");
+    out.autoEdit = !!editing && !!document.activeElement.closest("#grid");
+    // 回归：新行必须真的渲染出来，且 grid 不在「悬挂编辑态」里
+    // （曾经因为编辑器没关，渲染被永久推迟，表格停在上一个项目的内容上）
+    out.newRowRendered = document.querySelectorAll("#grid .cellbox").length === 1;
+    out.gridEditing = app.grid.isEditing();
+    // 接着打字应该写进这个 cell（而不是被当成快捷键）
+    if (editing) {
+      editing.textContent = "母亲";
+      editing.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick();
+    }
+    out.typedValue = store.db.getColumn("gaze").cells[0].value.toString();
+    out.stillOneCell = store.db.getColumn("gaze").cells.length;
+
+    // —— 键盘数字键 2 = 第二个分类
+    store.setTime(3000);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "2", bubbles: true }));
+    out.key2Start = store.isMarking(gest.id);
+    store.setTime(3600);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "2", bubbles: true }));
+    out.key2End = { marking: store.isMarking(gest.id), cells: gest.cells.length };
+    out.msg = document.getElementById("st-msg").textContent;
+
+    // —— Esc 放弃正在录制的
+    store.setTime(4000);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }));
+    out.beforeEsc = store.markingCount;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    out.afterEsc = { marking: store.markingCount, cells: store.db.getColumn("gaze").cells.length };
+
+    // —— 不足一帧也要产生合法 cell
+    store.setTime(5000);
+    store.toggleMark(gest.id);
+    store.toggleMark(gest.id);       // 同一时刻结束
+    const last = store.db.getColumn("gesture").cells.slice(-1)[0];
+    out.zeroLenGuard = { len: last.offset - last.onset, ok: last.offset > last.onset };
+
+    // —— 撤销一次只撤销一个打点
+    const before = store.db.getColumn("gesture").cells.length;
+    store.undo();
+    out.undoOneMark = { before, after: store.db.getColumn("gesture").cells.length };
+    return out;
+  })()`);
+  eq("打点条渲染出分类块", mark.chips, 2);
+  eq("数字键分配 1,2", mark.keys, "1,2");
+  ok("提示文案给了数字键用法", /数字键/.test(mark.hint), mark.hint);
+  eq("单击一次 = 开始录制", mark.afterFirstClick.marking, 1);
+  eq("开始时还不产生行", mark.afterFirstClick.cells, 0);
+  ok("录制中的块有视觉状态", mark.afterFirstClick.rec === 1);
+  eq("再单击 = 结束录制", mark.afterSecondClick.marking, 0);
+  eq("结束时产生一行", mark.afterSecondClick.cells, 1);
+  eq("时间范围正确", `${mark.cell.onset}-${mark.cell.offset}`, "1000-2500");
+  ok("打点后自动进入值编辑", mark.autoEdit);
+  ok("打点后表格里确实渲染出新行", mark.newRowRendered);
+  ok("编辑态是正常的（不是悬挂状态）", mark.gridEditing === true);
+  eq("进入编辑后打字写进该行", mark.typedValue, "母亲");
+  eq("回车不会多建行", mark.stillOneCell, 1);
+  ok("数字键 2 开始录制第二列", mark.key2Start);
+  eq("数字键 2 结束并生成行", mark.key2End.cells, 1);
+  ok("状态栏回显了这一笔打点", /gesture/.test(mark.msg), mark.msg);
+  eq("数字键 1 开始录制", mark.beforeEsc, 1);
+  eq("Esc 放弃录制", mark.afterEsc.marking, 0);
+  eq("Esc 不产生行", mark.afterEsc.cells, 1);
+  ok("不足一帧也生成合法 cell", mark.zeroLenGuard.ok, `长度 ${mark.zeroLenGuard.len}`);
+  eq("撤销一次 = 撤销一个打点", mark.undoOneMark.after, mark.undoOneMark.before - 1);
+
+  section("表格编辑：方向键 / Tab / 复制上一行");
+  const edit = await cdp.eval(`(() => {
+    const app = DVY.app, store = app.store;
+    store.newProject("编辑测试");
+    const col = store.addColumn("notes", "TEXT");
+    store.addCell(col.id, 0, 500);
+    store.addCell(col.id, 1000, 1500);
+    store.addCell(col.id, 2000, 2500);
+    void document.body.offsetHeight;
+    const out = {};
+    const cells = () => [...document.querySelectorAll("#grid .cellbox")];
+    out.rendered = cells().length;
+
+    // 选中第一行，方向键下移
+    store.select(col.id, col.cells[0].id);
+    out.sel0 = store.selectedCell.onset;
+    const box0 = document.querySelector('#grid .cellbox[data-cell-id="' + col.cells[0].id + '"]');
+    if (!box0) return out;
+    box0.focus();
+    box0.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    out.sel1 = store.selectedCell.onset;
+    document.querySelector('#grid .cellbox[data-cell-id="' + col.cells[1].id + '"]')
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    out.sel2 = store.selectedCell.onset;
+
+    out.boxIds = cells().map(b => b.dataset.cellId);
+    out.wantIds = col.cells.map(c => c.id);
+
+    // Tab 在编辑态里保存并跳到下一格
+    const box1 = document.querySelector('#grid .cellbox[data-cell-id="' + col.cells[1].id + '"]');
+    out.foundBox1 = !!box1;
+    if (!box1) return out;
+    const val = box1.querySelector(".cb-val");
+    out.foundVal = !!val;
+    if (!val) return out;
+    val.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    out.editing = !!document.querySelector("#grid .cb-val.editing");
+    const ed = document.querySelector("#grid .cb-val.editing");
+    if (!ed) return out;
+    ed.textContent = "第二个";
+    ed.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    out.valueSaved = col.cells[1].value.toString();
+    out.movedToNext = store.selectedCell ? store.selectedCell.onset : null;
+
+    // ⌘↑ 复制上一行的值
+    store.select(col.id, col.cells[2].id);
+    const box2 = document.querySelector('#grid .cellbox[data-cell-id="' + col.cells[2].id + '"]');
+    const v2 = box2.querySelector(".cb-val");
+    v2.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    const ed2 = document.querySelector("#grid .cb-val.editing");
+    out.beforeCopy = ed2.textContent;
+    ed2.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", metaKey: true, bubbles: true, cancelable: true }));
+    out.afterCopy = document.querySelector("#grid .cb-val.editing").textContent;
+    document.querySelector("#grid .cb-val.editing").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    return out;
+  })()`);
+  eq("三行都渲染出来", edit.rendered, 3);
+  eq("选中的是第一行", edit.sel0, 0);
+  eq("方向键↓ 移到第二行", edit.sel1, 1000);
+  eq("再按↓ 移到第三行", edit.sel2, 2000);
+  ok("单击值即进入编辑", edit.editing);
+  eq("Tab 保存了值", edit.valueSaved, "第二个");
+  eq("Tab 跳到了下一格", edit.movedToNext, 2000);
+  eq("复制前是空的", edit.beforeCopy, "");
+  eq("⌘↑ 复制到上一行的值", edit.afterCopy, "第二个");
+
+  section("视频全屏（应用内，按 F）");
+  const fs2 = await cdp.eval(`(() => {
+    const app = DVY.app;
+    const player = document.querySelector(".player");
+    const out = {};
+    out.before = app.video.isFullscreen;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true }));
+    out.on = app.video.isFullscreen;
+    out.hasClass = player.classList.contains("fs");
+    out.position = getComputedStyle(player).position;
+    out.rect = (() => { const r = player.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    out.off = app.video.isFullscreen;
+    out.classGone = !player.classList.contains("fs");
+    return out;
+  })()`);
+  eq("初始不是全屏", fs2.before, false);
+  ok("按 F 进入全屏", fs2.on && fs2.hasClass);
+  eq("全屏时用 fixed 铺满", fs2.position, "fixed");
+  ok(`全屏尺寸约等于视口 (${fs2.rect.w}x${fs2.rect.h})`, fs2.rect.w > 1000 && fs2.rect.h > 600);
+  ok("Esc 退出全屏", !fs2.off && fs2.classGone);
+
   section("控制台干净");
   const bad = cdp.logs.filter((l) => ["error", "exception"].includes(l.level));
   ok(`无 JS 报错/异常（共 ${cdp.logs.length} 条日志）`, bad.length === 0, bad.map((b) => b.text).join(" | ").slice(0, 400));

@@ -50,6 +50,8 @@
           <button data-act="add-column">新建列… <kbd>⌘K</kbd></button>
           <button data-act="toggle-align">时间对齐 <kbd>⌘T</kbd></button>
           <button data-act="show-all">显示所有列</button>
+          <button data-act="mark-register">把选中列放到打点条</button>
+          <button data-act="mark-clear">清空打点条</button>
           <button data-act="zoom-in">放大 <kbd>⌘+</kbd></button>
           <button data-act="zoom-out">缩小 <kbd>⌘-</kbd></button>
           <button data-act="zoom-reset">重置缩放 <kbd>⌘0</kbd></button>
@@ -140,6 +142,18 @@
   </section>
 
   <div class="splitter" id="splitter-player" title="拖动调整高度"></div>
+
+  <!-- ────────────────── 打点条（即时记录器） ────────────────── -->
+  <section class="markstrip" id="markstrip">
+    <div class="ms-head">
+      <span class="ms-title">置类型 · 打点</span>
+      <span class="ms-now" id="mark-now">00:00:00:000</span>
+      <span class="hint" id="mark-hint"></span>
+      <div class="spacer"></div>
+      <span class="ms-tip">单击分类 = 开始，再单击 = 结束</span>
+    </div>
+    <div class="ms-body" id="mark-chips"></div>
+  </section>
 
   <!-- ───────────────────────── 主体 ───────────────────────── -->
   <section class="main">
@@ -241,6 +255,7 @@
 <script src="ui/video.js"></script>
 <script src="ui/grid.js"></script>
 <script src="ui/timeline.js"></script>
+<script src="ui/markstrip.js"></script>
 <script src="ui/app.js"></script>
 </body>
 </html>
