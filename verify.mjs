@@ -138,6 +138,35 @@ const goldDb4 = fs.existsSync(path.join(FIX, "gold.db4"))
 
     const back = D4.writeDb4(db);
     eq("写回与 Python 完全一致", back, goldDb4);
+
+    /* ---- 回归：CRLF 行尾（Windows 上生成的 #4 文件） ----
+     * 标注原因：曾经因为没有先切掉行尾的 \r，\r 会被当成列名/值的一部分，
+     * 后果不是"某个字段小错"，而是**整个文件解析崩掉**——所有列名变成带 \r 的怪名字，
+     * getColumn("hidden_col") 返回 null，表现为"列凭空消失"。
+     *
+     * 为什么必须写成测试：这个坑非常容易被"顺手优化"掉。
+     * 只要有人把 db4.js 里的 `if (line.endsWith("\r")) line = line.slice(0, -1);`
+     * 当成冗余代码删掉（看起来确实像冗余），下面这些断言会立刻变红。
+     *
+     * 实测：临时去掉那行后，列名解析结果是 []（空数组）。
+     */
+    const crlfText = goldDb4.replace(/\n/g, "\r\n");
+    const crlfDb = D4.parseDb4(crlfText);
+    eq("CRLF：列数与 LF 一致", crlfDb.columns.length, db.columns.length);
+    eq("CRLF：列名干净无 \\r", crlfDb.columnNames().join("|"), db.columnNames().join("|"));
+    eq("CRLF：隐藏列仍可查到", crlfDb.getColumn("hidden_col") !== null, true);
+    eq("CRLF：隐藏列可见性正确", crlfDb.getColumn("hidden_col").hidden, true);
+    eq(
+      "CRLF：矩阵值仍正确切分",
+      JSON.stringify(crlfDb.getColumn("gesture").cells[0].value.values),
+      JSON.stringify(["look", "at, me"]),
+    );
+    eq("CRLF：中文与引号无损", crlfDb.getColumn("my-notes").cells[0].value.toString(), '他说"你好", 然后走了');
+    eq(
+      "CRLF：解析后重新写出与 LF 版一致",
+      D4.writeDb4(crlfDb),
+      goldDb4,
+      );
   }
 }
 
@@ -192,6 +221,16 @@ section("导出：逐 cell CSV / 逐帧 CSV");
   const mine = D4.writeCellsCsv(db);
   const py = fs.readFileSync(path.join(FIX, "gold.cells.csv"), "utf8");
   eq("逐 cell CSV 与 Python 一致", mine, py);
+
+  /* 回归：CRLF 行尾的 CSV 也要能读（Excel / Windows 导出的常见形态） */
+  const crlfCsvDb = D4.parseCellsCsv(py.replace(/\n/g, "\r\n"));
+  eq("CRLF：cell CSV 列数一致", crlfCsvDb.columns.length, db.columns.length);
+  eq(
+    "CRLF：cell CSV 矩阵值一致",
+    JSON.stringify(crlfCsvDb.getColumn("gesture").cells[0].value.values),
+    JSON.stringify(db.getColumn("gesture").cells[0].value.values),
+  );
+  eq("CRLF：cell CSV 值里带引号的字段无损", crlfCsvDb.getColumn("my-notes").cells[0].value.toString(), '他说"你好", 然后走了');
 
   // 注意：不能用 split(",") 数字段 —— 值里的逗号在引号内（这正是原版的坑之一）
   const hdrFields = D4.parseCsv(mine)[0].length;

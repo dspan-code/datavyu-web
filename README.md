@@ -76,13 +76,24 @@ python3 -m http.server 8793 --bind 127.0.0.1
 ## 自检
 
 ```bash
-node verify.mjs        # 核心逻辑：68 项
-node verify-web.mjs    # 浏览器端：43 项（会自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
+node verify.mjs        # 尺子：核心逻辑 78 项
+node verify-web.mjs    # 尺子：浏览器端 43 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
+node review.mjs        # 守门人：50 项，检查「以前踩过的坑现在还有没有人守着」
+
+# 对已经部署好的线上站点跑同一套浏览器测试：
+node verify-web.mjs --url=https://dspan-code.github.io/datavyu-web/
 ```
 
 `verify.mjs` 会把本实现的输出和一份**金标准夹具**逐字符对拍
 （夹具由独立的 Python 实现生成）；`verify-web.mjs` 不需要装 Playwright/Puppeteer，
 用的是 Chrome 自带的 CDP，通过 Node 原生 `WebSocket` 通信。
+
+`review.mjs` 是**守门人**，和上面两个的分工不同：它不做逻辑断言，而是核对
+「上次踩过的坑，守卫还在不在、有没有对应的回归测试、尺子有没有过期、仓库有没有退化」。
+为什么需要它：**守卫被删掉时，跟着它一起失效的测试也会一起变绿**——
+这种"元层面"的退化，普通的测试抓不到。
+
+每条守卫都登记了「为什么会踩到」，见 `review.mjs` 的 `GUARDS` 和 `制作笔记.md` §8.5。
 
 ---
 
