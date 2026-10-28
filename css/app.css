@@ -590,3 +590,19 @@ dialog::backdrop { background: rgba(5,7,10,.6); }
 .chart-empty { padding: 26px; color: var(--fg-mute); text-align: center; font-size: 12.5px; }
 .chart-svg .chart-bar { transition: opacity .12s; }
 .chart-svg .chart-bar:hover { opacity: 1 !important; }
+
+/* ─────────────────── 仓库样本列表 ─────────────────── */
+.samples-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; }
+.sample-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-3); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 11px; cursor: pointer; text-align: left;
+  color: var(--fg); width: 100%;
+}
+.sample-item:hover { background: var(--bg-hi); border-color: var(--accent); }
+.sample-item .si-title { font-weight: 600; font-size: 12.5px; }
+.sample-item .si-desc { color: var(--fg-mute); font-size: 11.5px; }
+.sample-item .si-badge {
+  margin-left: auto; font: 10.5px/1 ui-monospace, Menlo, monospace;
+  color: var(--fg-mute); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px;
+}

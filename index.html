@@ -26,6 +26,7 @@
         <div class="menu-pop">
           <button data-act="new">新建工程 <kbd>⌘N</kbd></button>
           <button data-act="open">打开… <kbd>⌘O</kbd></button>
+          <button data-act="open-sample">从本仓库打开…</button>
           <hr>
           <button data-act="save-opf">保存工程 .opf <kbd>⌘S</kbd></button>
           <button data-act="export-analysis">★ 导出 · 分析用 CSV（时间按秒/毫秒，可直接算）</button>
@@ -237,6 +238,20 @@
       <button value="ok" class="btn primary" id="dlg-col-ok">创建</button>
     </div>
   </form>
+</dialog>
+
+<!-- 仓库里的样本工程 -->
+<dialog id="dlg-samples">
+  <div class="dlg">
+    <h3>从本仓库打开</h3>
+    <p class="dlg-note" id="samples-note">正在读取…</p>
+    <div class="samples-list" id="samples-list"></div>
+    <p class="dlg-note">
+      这些 <code>.opf</code> 放在仓库的 <code>_samples/</code> 目录里，是公开的。
+      自己的研究数据建议用「文件 → 打开…」本地载入，不要放进公开仓库。
+    </p>
+    <div class="dlg-actions"><button class="btn" id="samples-close">关闭</button></div>
+  </div>
 </dialog>
 
 <!-- 累计时长柱状图 -->

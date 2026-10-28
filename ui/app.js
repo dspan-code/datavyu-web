@@ -280,6 +280,78 @@
     }
   });
 
+  /* ------------------------------------------------- 仓库里的样本工程
+   *
+   * 为什么要有：把 .opf 发给别人时，对方得先拿到文件再手动打开。
+   * 放进仓库 _samples/ + 一个 samples.json 清单，网页里点一下就能看。
+   *
+   * 兼容三种打开方式：
+   *   /index.html              -> _samples/samples.json
+   *   /datavyu-web/index.html  -> /datavyu-web/_samples/samples.json
+   *   file:///.../index.html   -> 浏览器禁止 fetch 本地文件，给明确提示
+   */
+  async function loadSamples() {
+    const list = $("samples-list");
+    const note = $("samples-note");
+    list.innerHTML = "";
+    note.textContent = "正在读取 _samples/samples.json …";
+
+    if (location.protocol === "file:") {
+      note.textContent =
+        "用 file:// 直接打开时，浏览器不允许读同目录清单。请用「启动.command」起本地服务，或直接访问线上网址。";
+      return;
+    }
+
+    const baseUrl = new URL("./_samples/", location.href).href;
+    let manifest;
+    try {
+      const res = await fetch(baseUrl + "samples.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      manifest = await res.json();
+    } catch (e) {
+      note.textContent = `读不到样本清单（${e.message}）。把 .opf 放进仓库 _samples/ 并在 samples.json 里登记。`;
+      return;
+    }
+
+    const items = Array.isArray(manifest.samples) ? manifest.samples : [];
+    if (!items.length) {
+      note.textContent = "清单里还没有样本。";
+      return;
+    }
+    note.textContent = `共 ${items.length} 个样本（来自仓库 _samples/ 目录）`;
+
+    for (const it of items) {
+      const btn = document.createElement("button");
+      btn.className = "sample-item";
+      btn.type = "button";
+      const box = document.createElement("span");
+      const t = document.createElement("div");
+      t.className = "si-title";
+      t.textContent = it.title || it.file;
+      const d = document.createElement("div");
+      d.className = "si-desc";
+      d.textContent = it.desc || "";
+      box.append(t, d);
+      const badge = document.createElement("span");
+      badge.className = "si-badge";
+      badge.textContent = it.file;
+      btn.append(box, badge);
+      btn.addEventListener("click", async () => {
+        try {
+          const r = await fetch(baseUrl + encodeURIComponent(it.file), { cache: "no-store" });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const buf = new Uint8Array(await r.arrayBuffer());
+          const result = store.openBytes(buf, it.file);
+          $("dlg-samples").close();
+          msg(`已载入样本「${it.title || it.file}」（${result.kind}，${store.db.columns.length} 列 ${store.db.cellCount()} 行）`, "ok");
+        } catch (e) {
+          msg(`载入失败：${e.message}`, "err");
+        }
+      });
+      list.appendChild(btn);
+    }
+  }
+
   /* ------------------------------------------------------- 新建列对话框 */
 
   function openColumnDialog() {
@@ -383,6 +455,10 @@
       if (store.db.cellCount() && !confirm("新建会清空当前工程（浏览器存档也会被覆盖）。继续？")) return;
       store.newProject("untitled");
       msg("已新建空工程", "ok");
+    },
+    "open-sample"() {
+      $("dlg-samples").showModal();
+      loadSamples();
     },
     open() {
       openViaPicker(".opf,.db,.csv,.json,.txt,.odb");
@@ -505,6 +581,7 @@
     msg("已导出柱状图 PNG（2x 分辨率）", "ok");
   });
   $("chart-close").addEventListener("click", () => chart.close());
+  $("samples-close").addEventListener("click", () => $("dlg-samples").close());
 
   els.chkAlign.addEventListener("change", () => grid.setAligned(els.chkAlign.checked));
   els.chkLive.addEventListener("change", () => {

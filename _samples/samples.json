@@ -1,0 +1,10 @@
+{
+  "note": "把 .opf 文件放进本目录，然后在下面登记一行，网页里就能直接打开。",
+  "samples": [
+    {
+      "file": "sample-demo.opf",
+      "title": "示例工程（4 类 · 11 段）",
+      "desc": "演示用的编码数据：gaze / gesture / vocal / notes"
+    }
+  ]
+}

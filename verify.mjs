@@ -193,6 +193,10 @@ section("opf：读金标准工程 + 再写再读");
     eq("再读回 db 文本一致", D4.writeDb4(r2.db), D4.writeDb4(r.db));
     eq("再读回额外条目", r2.extraEntries.map((e) => e.name).join(","), "abc123");
     ok(`zip 体积合理 ${out.length}/${bytes.length}`, out.length < bytes.length * 2);
+    // 回归：.opf 里存的工程名不能被文件名覆盖
+    const named = OPF.writeOpf(r.db, { project: { ...r.project, name: "被试03" } });
+    const reopened = OPF.readOpf(named, "sample-demo.opf");
+    eq("读回时保留 .opf 里的工程名", reopened.project.name, "被试03");
 
     // readAny 自动识别
     const ra = OPF.readAny(bytes, "gold.opf");

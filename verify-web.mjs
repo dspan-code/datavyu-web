@@ -509,6 +509,46 @@ async function runTests(cdp) {
   ok("逐帧 CSV 含 time_s", ex2.frameHasTimeS);
   ok("菜单里有三个分析导出入口", /export-analysis/.test(ex2.menuActs) && /export-analysis-seconds/.test(ex2.menuActs) && /export-cells-wide/.test(ex2.menuActs), ex2.menuActs);
 
+  section("从仓库打开样本 .opf");
+  const sampleT = await cdp.eval(`(async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const app = DVY.app, store = app.store;
+    store.newProject("样本测试");
+    app.actions["open-sample"]();
+    // 等 fetch 清单 + 渲染
+    for (let i = 0; i < 40 && !document.querySelector("#samples-list .sample-item"); i++) await tick();
+    const items = [...document.querySelectorAll("#samples-list .sample-item")];
+    const out = {
+      dialogOpen: document.getElementById("dlg-samples").open,
+      note: document.getElementById("samples-note").textContent,
+      items: items.length,
+      title: items[0] ? items[0].querySelector(".si-title").textContent : null,
+    };
+    if (items[0]) {
+      items[0].click();
+      for (let i = 0; i < 40 && store.db.cellCount() === 0; i++) await tick();
+      out.loadedCols = store.db.columns.map((c) => c.name);
+      out.loadedCells = store.db.cellCount();
+      out.loadedName = store.db.name;
+      out.dialogClosed = !document.getElementById("dlg-samples").open;
+      // 载入后图表应当算得出来
+      const d = app.chart.data();
+      out.chartBars = d.bars.length;
+      out.gazeSec = d.bars.find((b) => b.name === "gaze") ? Number(d.bars.find((b) => b.name === "gaze").value.toFixed(2)) : null;
+      document.getElementById("chart-close").click();
+    }
+    return out;
+  })()`);
+  ok("样本对话框能打开", sampleT.dialogOpen);
+  eq("清单里至少有 1 个样本", sampleT.items >= 1, true);
+  ok(`样本标题可读：${sampleT.title}`, !!sampleT.title);
+  eq("载入后是 4 列", (sampleT.loadedCols || []).length, 4);
+  eq("载入后是 11 段", sampleT.loadedCells, 11);
+  eq("载入的是 opf", sampleT.loadedName, "示例工程");
+  ok("载入后对话框自动关闭", sampleT.dialogClosed);
+  eq("载入后图表能算出柱子（4 类 + 未编码）", sampleT.chartBars, 5);
+  eq("示例里 gaze 累计 9.00s", sampleT.gazeSec, 9);
+
   section("累计时长柱状图（每类一根柱子）");
   const chartT = await cdp.eval(`(async () => {
     const tick = () => new Promise((r) => setTimeout(r, 0));
