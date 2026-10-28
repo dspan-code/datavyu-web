@@ -54,6 +54,10 @@
     columnManager: $("column-manager"),
     chkAlign: $("chk-align"),
     chkLive: $("chk-live"),
+    // 图表
+    dlgChart: $("dlg-chart"),
+    chartHost: $("chart-host"),
+    chartMeta: $("chart-meta"),
     // 打点条
     markStrip: $("mark-chips"),
     markNow: $("mark-now"),
@@ -105,6 +109,7 @@
       grid.requestEdit(colId, cellId, null);
     },
   });
+  const chart = globalThis.DVY.ui.chart.mount(store, els);
   const grid = globalThis.DVY.ui.grid.mount(store, {
     ...els,
     onAddColumn: () => openColumnDialog(),
@@ -464,6 +469,9 @@
     "timeline-toggle"() {
       els.timeline.classList.toggle("hidden");
     },
+    chart() {
+      chart.open();
+    },
     "help-keys"() {
       showInfo("快捷键", HELP_KEYS);
     },
@@ -487,6 +495,16 @@
   });
 
   /* ---------------------------------------------------------- 控件绑定 */
+
+  // 图表控件
+  $("chart-units").addEventListener("change", (e) => chart.setUnits(e.target.value));
+  $("chart-mode").addEventListener("change", (e) => chart.setMode(e.target.value));
+  $("chart-hidden").addEventListener("change", (e) => chart.setIncludeHidden(e.target.checked));
+  $("chart-export").addEventListener("click", () => {
+    chart.exportPng(`${baseName()}.durations.png`);
+    msg("已导出柱状图 PNG（2x 分辨率）", "ok");
+  });
+  $("chart-close").addEventListener("click", () => chart.close());
 
   els.chkAlign.addEventListener("change", () => grid.setAligned(els.chkAlign.checked));
   els.chkLive.addEventListener("change", () => {
@@ -785,5 +803,5 @@
   }
 
   // 暴露给控制台/自动化测试
-  globalThis.DVY.app = { store, video, grid, timeline, markstrip, actions };
+  globalThis.DVY.app = { store, video, grid, timeline, markstrip, chart, actions };
 })();

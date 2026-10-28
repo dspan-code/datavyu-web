@@ -24,6 +24,7 @@ const Z = require("./lib/zip.js");
 const M = require("./lib/model.js");
 const D4 = require("./lib/db4.js");
 const OPF = require("./lib/opf.js");
+const A = require("./lib/analytics.js");
 
 let pass = 0;
 let fail = 0;
@@ -315,6 +316,58 @@ section("导出：逐 cell CSV / 逐帧 CSV");
 
   const at1000 = rows.find((r) => r.startsWith("31,"));
   ok("逐帧在 1s 处命中 gesture", !!at1000 && at1000.includes('"look"'));
+}
+
+section("统计：每类累计时长（柱状图数据）");
+{
+  const mk = () => {
+    const db = new M.Database("t");
+    const g = db.addColumn("gaze", "NOMINAL");
+    g.addCell(new M.Cell(0, 1000, new M.Value("a")));
+    g.addCell(new M.Cell(2000, 3500, new M.Value("b")));
+    const v = db.addColumn("vocal", "TEXT");
+    v.addCell(new M.Cell(1200, 1800, new M.Value("x")));
+    v.addCell(new M.Cell(1500, 2200, new M.Value("y"))); // 与上一段重叠
+    return db;
+  };
+  const db = mk();
+
+  // 一类的累计时长 = Σ(offset-onset)，重叠默认按并集（不重复计时）
+  const u = A.columnDurations(db);
+  eq("gaze 累计 2500ms", u.find((x) => x.name === "gaze").totalMs, 2500);
+  eq("vocal 并集 1000ms（1200→2200）", u.find((x) => x.name === "vocal").totalMs, 1000);
+  eq("vocal 直接相加 1300ms", A.columnDurations(db, { mode: "sum" }).find((x) => x.name === "vocal").totalMs, 1300);
+  eq("gaze 段数", u.find((x) => x.name === "gaze").count, 2);
+
+  // 覆盖区间与未编码时长
+  eq("已覆盖 3300ms（并集）", A.coveredMs(db), 3300);
+  const d = A.barData(db);
+  eq("柱子数量 = 分类数 + 未编码", d.bars.length, 3);
+  eq("最后一根是「未编码」", d.bars[d.bars.length - 1].name, "未编码");
+  eq("未编码 200ms（1000→1200 之间）", Math.round(d.bars[d.bars.length - 1].valueMs), 200);
+  eq("时间跨度 3.5s", Number(d.span.toFixed(2)), 3.5);
+  eq("柱子按数值降序（未编码除外）", d.bars[0].name, "gaze");
+
+  // 单位换算
+  const ms = A.barData(db, { units: "ms" });
+  eq("毫秒单位下 gaze = 2500", ms.bars.find((b) => b.name === "gaze").value, 2500);
+
+  // 隐藏列默认不进图表
+  db.getColumn("vocal").hidden = true;
+  const dh = A.barData(db);
+  ok("隐藏列默认被排除", !dh.bars.some((b) => b.name === "vocal"));
+  ok("includeHidden 可以包含回来", A.barData(db, { includeHidden: true }).bars.some((b) => b.name === "vocal"));
+
+  // 空数据库不能崩
+  const empty = A.barData(new M.Database("empty"));
+  eq("空库没有柱子", empty.bars.length, 0);
+  const one = new M.Database("one");
+  const oc = one.addColumn("only", "TEXT");
+  oc.addCell(new M.Cell(500, 1500, new M.Value("z")));
+  const od = A.barData(one);
+  eq("有数据时才会多出未编码柱", od.bars.length, 2);
+  eq("未编码柱是最后一根", od.bars[1].name, "未编码");
+  eq("空库 maxBar 兜底为 1（避免除零）", empty.maxBar, 1);
 }
 
 section("模型：撤销 / 校验 / JSON");

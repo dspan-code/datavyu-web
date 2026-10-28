@@ -69,6 +69,15 @@ python3 -m http.server 8793 --bind 127.0.0.1
 > ⚠️ 原版 Datavyu 只导出 `hh:mm:ss:mmm` 文本，在 Excel 里是纯文本、不能求和。
 > 所以默认推荐用「分析用 CSV」。
 
+**统计图（就在页面里看）**
+
+「工作表 → 累计时长柱状图」（或直接看图表对话框）：
+
+- 一根柱子 = 一类行为的累计时长 `Σ(offset − onset)`
+- 另有一根「**未编码**」= 时间跨度里所有已标记区间之外的部分（越接近 0，编码越完整）
+- 单位可切秒/毫秒；同一列内重叠的段默认按**并集**计时（不重复计算），也可切换成直接相加
+- 支持**导出 PNG**（2x 分辨率，直接贴进论文/PPT）
+
 **隐私**
 - 没有后端、没有账号、不发任何网络请求；视频文件只在你的浏览器里解码播放
 
@@ -100,9 +109,9 @@ python3 -m http.server 8793 --bind 127.0.0.1
 ## 自检
 
 ```bash
-node verify.mjs        # 尺子：核心逻辑 103 项
-node verify-web.mjs    # 尺子：浏览器端 89 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
-node review.mjs        # 守门人：55 项，检查「以前踩过的坑现在还有没有人守着」
+node verify.mjs        # 尺子：核心逻辑 120 项
+node verify-web.mjs    # 尺子：浏览器端 102 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
+node review.mjs        # 守门人：56 项，检查「以前踩过的坑现在还有没有人守着」
 
 # 对已经部署好的线上站点跑同一套浏览器测试：
 node verify-web.mjs --url=https://dspan-code.github.io/datavyu-web/

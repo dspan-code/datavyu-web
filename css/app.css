@@ -571,3 +571,22 @@ dialog::backdrop { background: rgba(5,7,10,.6); }
 }
 .info-body table { border-collapse: collapse; width: 100%; }
 .info-body td, .info-body th { border: 1px solid var(--line-soft); padding: 3px 7px; text-align: left; font-size: 12px; }
+
+/* ─────────────────── 累计时长柱状图 ─────────────────── */
+
+.dlg-chart { max-width: 94vw; }
+.dlg-chart .dlg { min-width: min(860px, 92vw); }
+.chart-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.chart-tools .field > span { width: auto; }
+.chart-host {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 56vh;
+}
+.chart-host .chart-svg { display: block; max-width: 100%; height: auto; }
+.chart-empty { padding: 26px; color: var(--fg-mute); text-align: center; font-size: 12.5px; }
+.chart-svg .chart-bar { transition: opacity .12s; }
+.chart-svg .chart-bar:hover { opacity: 1 !important; }

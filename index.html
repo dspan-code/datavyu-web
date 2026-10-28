@@ -62,6 +62,8 @@
           <hr>
           <button data-act="side-toggle">显示/隐藏列管理面板</button>
           <button data-act="timeline-toggle">显示/隐藏时间轴</button>
+          <hr>
+          <button data-act="chart">★ 累计时长柱状图</button>
         </div>
       </div>
 
@@ -237,6 +239,39 @@
   </form>
 </dialog>
 
+<!-- 累计时长柱状图 -->
+<dialog id="dlg-chart" class="dlg-chart">
+  <div class="dlg">
+    <h3>每类行为的累计时长</h3>
+    <p class="dlg-note" id="chart-meta">—</p>
+    <div class="chart-tools">
+      <label class="field">
+        <span>单位</span>
+        <select id="chart-units">
+          <option value="s">秒（s）</option>
+          <option value="ms">毫秒（ms）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>重复段</span>
+        <select id="chart-mode">
+          <option value="union">按并集算（推荐）</option>
+          <option value="sum">按段直接相加</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="chart-hidden"> 包含隐藏列</label>
+      <div class="spacer"></div>
+      <button class="btn" id="chart-export">导出 PNG</button>
+      <button class="btn primary" id="chart-close">关闭</button>
+    </div>
+    <div class="chart-host" id="chart-host"></div>
+    <p class="dlg-note">
+      柱子 = 该类所有段的 Σ(offset − onset)。「未编码」= 时间跨度里除去所有已标记区间之后剩下的部分，
+      这个数越接近 0，说明编码越完整。同一列内若有重叠的段，默认按并集计时（不重复计算）。
+    </p>
+  </div>
+</dialog>
+
 <!-- 通用说明对话框 -->
 <dialog id="dlg-info">
   <div class="dlg">
@@ -255,11 +290,13 @@
 <script src="lib/db4.js"></script>
 <script src="lib/opf.js"></script>
 <script src="lib/store.js"></script>
+<script src="lib/analytics.js"></script>
 <script src="ui/timeutil.js"></script>
 <script src="ui/video.js"></script>
 <script src="ui/grid.js"></script>
 <script src="ui/timeline.js"></script>
 <script src="ui/markstrip.js"></script>
+<script src="ui/chart.js"></script>
 <script src="ui/app.js"></script>
 </body>
 </html>

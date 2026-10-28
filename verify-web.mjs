@@ -509,19 +509,78 @@ async function runTests(cdp) {
   ok("逐帧 CSV 含 time_s", ex2.frameHasTimeS);
   ok("菜单里有三个分析导出入口", /export-analysis/.test(ex2.menuActs) && /export-analysis-seconds/.test(ex2.menuActs) && /export-cells-wide/.test(ex2.menuActs), ex2.menuActs);
 
+  section("累计时长柱状图（每类一根柱子）");
+  const chartT = await cdp.eval(`(async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const app = DVY.app, store = app.store;
+    store.newProject("图表测试");
+    const a = store.addColumn("gaze", "NOMINAL");
+    store.addCell(a.id, 0, 1500);      // 1.5s
+    store.addCell(a.id, 2000, 3000);   // 1.0s
+    const b = store.addColumn("vocal", "TEXT");
+    store.addCell(b.id, 1000, 2500);   // 1.5s
+    await tick();
+
+    app.chart.open();
+    const out = {};
+    out.dialogOpen = document.getElementById("dlg-chart").open;
+    out.bars = [...document.querySelectorAll("#chart-host .chart-bar")].map((r) => ({
+      name: r.dataset.name, valueMs: Number(r.dataset.valueMs),
+    }));
+    out.meta = document.getElementById("chart-meta").textContent;
+    out.values = [...document.querySelectorAll("#chart-host .chart-value")].map((t) => t.textContent);
+
+    // 切换单位到毫秒
+    document.getElementById("chart-units").value = "ms";
+    document.getElementById("chart-units").dispatchEvent(new Event("change"));
+    await tick();
+    out.msValues = [...document.querySelectorAll("#chart-host .chart-value")].map((t) => t.textContent);
+
+    // 关闭再打开
+    document.getElementById("chart-close").click();
+    out.closed = !document.getElementById("dlg-chart").open;
+    app.chart.open();
+    out.reopened = document.getElementById("dlg-chart").open;
+    document.getElementById("chart-close").click();
+    return out;
+  })()`);
+  ok("图表对话框能打开", chartT.dialogOpen);
+  eq("柱状图柱子数 = 2 类 + 未编码", chartT.bars.length, 3);
+  const byName = Object.fromEntries(chartT.bars.map((b) => [b.name, b.valueMs]));
+  eq("gaze 累计 2500ms", byName.gaze, 2500);
+  eq("vocal 累计 1500ms", byName.vocal, 1500);
+  eq("未编码 0ms（三段刚好铺满 0→3000）", byName["未编码"], 0);
+  ok(`每根柱子都有数值标签（${chartT.values.join(" / ")}）`, chartT.values.length === 3);
+  ok("秒单位下 gaze 显示 2.50s", chartT.values.includes("2.50s"), chartT.values.join(","));
+  ok("切到毫秒后显示 2,500 或 2500", chartT.msValues.some((v) => /2[,.]?500/.test(v)), chartT.msValues.join(","));
+  ok("能关闭图表对话框", chartT.closed);
+  ok("能再次打开", chartT.reopened);
+  ok("元信息含段数与跨度", /2 段|3 段|跨度/.test(chartT.meta), chartT.meta);
+
   section("本地存档（localStorage）");
   const ls = await cdp.eval(`(() => {
     const store = DVY.app.store;
     const raw = localStorage.getItem(DVY.store.LS_KEY);
     const obj = JSON.parse(raw);
-    return { has: !!raw, cols: obj.db.columns.length, name: obj.db.name };
+    // 断言「存档内容 == 内存数据」，而不是写死列数
+    return {
+      has: !!raw,
+      cols: obj.db.columns.length,
+      name: obj.db.name,
+      storeCols: store.db.columns.length,
+      storeName: store.db.name,
+      cells: obj.db.columns.reduce((a, c) => a + c.cells.length, 0),
+      storeCells: store.db.cellCount(),
+    };
   })()`);
   ok("自动存档已写入 localStorage", ls.has);
-  eq("存档列数一致", ls.cols, 1);
+  eq("存档列数与内存一致", ls.cols, ls.storeCols);
+  eq("存档工程名与内存一致", ls.name, ls.storeName);
+  eq("存档行数与内存一致", ls.cells, ls.storeCells);
 
   section("时间对齐切换 / 缩放 / 面板开关");
   const toggle = await cdp.eval(`(() => {
-    const app = DVY.app;
+    const app = DVY.app, store = app.store;
     const before = app.grid.aligned;
     app.actions["toggle-align"]();
     const after = app.grid.aligned;
@@ -534,13 +593,19 @@ async function runTests(cdp) {
     app.actions["timeline-toggle"]();
     const tlHidden = document.getElementById("timeline").classList.contains("hidden");
     app.actions["timeline-toggle"]();
-    return { before, after, z, sideHidden, tlHidden, cells: document.querySelectorAll("#grid .cellbox").length };
+    // 用「表格里渲染的 cell 数 == store 里的 cell 数」做断言，
+    // 不写死具体数字 —— 否则前面测试段增加了数据，这里就会莫名其妙变红
+    return {
+      before, after, z, sideHidden, tlHidden,
+      cells: document.querySelectorAll("#grid .cellbox").length,
+      storeCells: store.db.cellCount(),
+    };
   })()`);
   eq("时间对齐可切换", toggle.before !== toggle.after, true);
   ok(`缩放生效 (${toggle.z})`, Math.abs(toggle.z - 1.15) < 1e-6 || toggle.z > 1);
   ok("侧栏可折叠", toggle.sideHidden);
   ok("时间轴可隐藏", toggle.tlHidden);
-  eq("堆叠模式下 cell 仍渲染（导出段留下的 1 行）", toggle.cells, 1);
+  eq("堆叠模式下渲染的 cell 数与数据一致", toggle.cells, toggle.storeCells);
 
   section("打点条：单击切换式打点 + 数字键 + 自动进编辑");
   const mark = await cdp.eval(`(async () => {
