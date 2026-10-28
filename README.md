@@ -101,8 +101,8 @@ python3 -m http.server 8793 --bind 127.0.0.1
 
 ```bash
 node verify.mjs        # 尺子：核心逻辑 103 项
-node verify-web.mjs    # 尺子：浏览器端 79 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
-node review.mjs        # 守门人：54 项，检查「以前踩过的坑现在还有没有人守着」
+node verify-web.mjs    # 尺子：浏览器端 89 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
+node review.mjs        # 守门人：55 项，检查「以前踩过的坑现在还有没有人守着」
 
 # 对已经部署好的线上站点跑同一套浏览器测试：
 node verify-web.mjs --url=https://dspan-code.github.io/datavyu-web/
