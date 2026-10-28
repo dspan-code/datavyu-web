@@ -28,8 +28,12 @@
           <button data-act="open">打开… <kbd>⌘O</kbd></button>
           <hr>
           <button data-act="save-opf">保存工程 .opf <kbd>⌘S</kbd></button>
-          <button data-act="export-cells">导出 · 每行一个 cell CSV</button>
-          <button data-act="export-frames">导出 · 逐帧 CSV</button>
+          <button data-act="export-analysis">★ 导出 · 分析用 CSV（时间按秒/毫秒，可直接算）</button>
+          <button data-act="export-analysis-seconds">导出 · 分析用 CSV（只要秒，列最少）</button>
+          <button data-act="export-cells-wide">导出 · 分析用 CSV（宽表，保留原版列名）</button>
+          <hr>
+          <button data-act="export-cells">导出 · 每行一个 cell CSV（原版格式）</button>
+          <button data-act="export-frames">导出 · 逐帧 CSV（含 time 与 time_s）</button>
           <button data-act="export-json">导出 · 本程序 JSON</button>
           <hr>
           <button data-act="clear-local" class="danger">清除浏览器本地存档</button>

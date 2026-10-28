@@ -467,6 +467,48 @@ async function runTests(cdp) {
   eq("逐帧 CSV 第一行 framenum,time", exp.framesFirst, "1,0");
   ok("JSON 导出可解析", exp.jsonOK);
 
+  section("导出：时间必须是可计算的数字");
+  const ex2 = await cdp.eval(`(() => {
+    const store = DVY.app.store;
+    store.newProject("导出格式测试");
+    const col = store.addColumn("gaze", "NOMINAL");
+    store.addCell(col.id, 1500, 4250);
+
+    const longTxt = store.toAnalysisCsv();
+    const long = DVY.db4.parseCsv(longTxt);
+    const secTxt = store.toAnalysisCsv({ units: "seconds" });
+    const sec = DVY.db4.parseCsv(secTxt);
+    const wide = DVY.db4.parseCsv(store.toAnalysisCsv({ mode: "wide" }));
+    const frames = DVY.db4.parseCsv(store.toFrameCsv());
+
+    const pick = (row, key) => row[long[0].indexOf(key)];
+    return {
+      longHeader: long[0].join(","),
+      longOnsetMs: pick(long[1], "onset_ms"),
+      longOnsetS: pick(long[1], "onset_s"),
+      longDurationS: pick(long[1], "duration_s"),
+      allNumeric: ["onset_ms","onset_s","offset_ms","offset_s","duration_ms","duration_s"]
+        .every(k => Number.isFinite(Number(pick(long[1], k)))),
+      secHeader: sec[0].join(","),
+      secNoMs: !sec[0].includes("onset_ms"),
+      wideHasMs: wide[0].some(h => h === "gaze.onset_ms"),
+      frameHasTimeS: frames[0][2] === "time_s",
+      // 菜单里三个分析导出都在
+      menuActs: [...document.querySelectorAll(".menu-pop button[data-act]")]
+        .map(b => b.dataset.act).filter(a => a.startsWith("export-")).join(","),
+    };
+  })()`);
+  eq("长表表头（毫秒+秒都有）", ex2.longHeader.split(",").slice(0, 9).join(","), "column,type,ordinal,onset_ms,onset_s,offset_ms,offset_s,duration_ms,duration_s");
+  eq("onset_ms = 1500", ex2.longOnsetMs, "1500");
+  eq("onset_s = 1.500", ex2.longOnsetS, "1.500");
+  eq("duration_s = 2.750", ex2.longDurationS, "2.750");
+  ok("六列时间全部是数字（能直接求和）", ex2.allNumeric);
+  eq("纯秒版表头", ex2.secHeader.split(",").slice(0, 6).join(","), "column,type,ordinal,onset_s,offset_s,duration_s");
+  ok("纯秒版没有毫秒列", ex2.secNoMs);
+  ok("宽表含 gaze.onset_ms", ex2.wideHasMs);
+  ok("逐帧 CSV 含 time_s", ex2.frameHasTimeS);
+  ok("菜单里有三个分析导出入口", /export-analysis/.test(ex2.menuActs) && /export-analysis-seconds/.test(ex2.menuActs) && /export-cells-wide/.test(ex2.menuActs), ex2.menuActs);
+
   section("本地存档（localStorage）");
   const ls = await cdp.eval(`(() => {
     const store = DVY.app.store;

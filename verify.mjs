@@ -256,6 +256,63 @@ section("导出：逐 cell CSV / 逐帧 CSV");
   const withExtra = D4.writeFrameCsv(db, { fps: 30, inclusiveEnd: true });
   eq("inclusiveEnd 复刻原版多一帧", withExtra.trim().split("\n").length - 1, expected + 1);
 
+  // —— 可计算性：原版的时间是 hh:mm:ss:mmm 文本，Excel 里没法求和。
+  // 分析用 CSV 把所有时间给成数字（毫秒 + 秒），这是用户明确提出的需求。
+  const analysis = D4.writeAnalysisCsv(db);
+  const aRows = D4.parseCsv(analysis);
+  eq(
+    "分析CSV 表头含毫秒与秒",
+    aRows[0].join(","),
+    "column,type,ordinal,onset_ms,onset_s,offset_ms,offset_s,duration_ms,duration_s,value,codes,code_values",
+  );
+  eq("分析CSV 行数 = 所有 cell 数", aRows.length - 1, db.cellCount());
+  const g1 = aRows.find((r) => r[0] === "gesture");
+  ok("分析CSV 有 gesture 行", !!g1);
+  if (g1) {
+    eq("onset_ms 是纯数字", g1[3], "1000");
+    eq("onset_s 是秒", g1[4], "1.000");
+    eq("offset_s 是秒", g1[6], "2.000");
+    eq("duration_ms 可直接算", g1[7], "1000");
+    eq("duration_s 可直接算", g1[8], "1.000");
+    ok("onset_ms 能被 Number 解析", Number.isFinite(Number(g1[3])) && Number(g1[7]) === 1000);
+  }
+  const notes1 = aRows.find((r) => r[0] === "my-notes");
+  ok("TEXT 列的值原样保留（含引号与逗号）", !!notes1 && notes1[9] === '他说"你好", 然后走了');
+  ok("矩阵列的子码值单独一列", !!g1 && g1[11] === "look|at, me");
+
+  // units=seconds：只给秒，列最少（给 R / SPSS 最省事的形态）
+  const secOnly = D4.parseCsv(D4.writeAnalysisCsv(db, { units: "seconds" }));
+  eq(
+    "纯秒导出表头",
+    secOnly[0].join(","),
+    "column,type,ordinal,onset_s,offset_s,duration_s,value,codes,code_values",
+  );
+  const gs = secOnly.find((r) => r[0] === "gesture");
+  eq("纯秒 onset_s", gs[3], "1.000");
+  eq("纯秒 duration_s", gs[5], "1.000");
+  ok("纯秒导出没有毫秒列", !secOnly[0].includes("onset_ms"));
+
+  // units=ms：只给毫秒整数
+  const msOnly = D4.parseCsv(D4.writeAnalysisCsv(db, { units: "ms" }));
+  eq("纯毫秒表头", msOnly[0].join(","), "column,type,ordinal,onset_ms,offset_ms,duration_ms,value,codes,code_values");
+  eq("纯毫秒 onset_ms", msOnly.find((r) => r[0] === "gesture")[3], "1000");
+
+  // 宽表：保留原版列名，同时在 onset/offset 旁加数字列
+  const wide = D4.parseCsv(D4.writeAnalysisCsv(db, { mode: "wide" }));
+  ok("宽表保留原版 gesture.onset 列", wide[0].includes("gesture.onset"));
+  ok("宽表新增 gesture.onset_ms", wide[0].includes("gesture.onset_ms"));
+  ok("宽表新增 gesture.offset_s", wide[0].includes("gesture.offset_s"));
+  const wi = wide[0].indexOf("gesture.onset_ms");
+  eq("宽表 onset_ms 与长表一致", wide[1][wi], "1000");
+
+  // 逐帧 CSV：numeric 模式多一列 time_s
+  const fn = D4.parseCsv(D4.writeFrameCsv(db, { fps: 30, numeric: true }));
+  eq("逐帧表头第 3 列是 time_s", fn[0][2], "time_s");
+  eq("逐帧首帧 time=0", fn[1][1], "0");
+  eq("逐帧首帧 time_s=0.000", fn[1][2], "0.000");
+  const lastFrame = fn[fn.length - 1];
+  ok("逐帧末帧 time_s 与 time 一致", Math.abs(Number(lastFrame[2]) - Number(lastFrame[1]) / 1000) < 1e-6);
+
   const at1000 = rows.find((r) => r.startsWith("31,"));
   ok("逐帧在 1s 处命中 gesture", !!at1000 && at1000.includes('"look"'));
 }

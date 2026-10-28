@@ -277,7 +277,32 @@ soft(
   /先证明|先确认|证明.*期望/.test(notes),
 );
 // 提醒：守卫多了但笔记没跟着长，说明有坑没记下来
+const verifySrc = exists("verify.mjs") ? read("verify.mjs") : "";
 const guardCount = GUARDS.filter((g) => g.must).length;
+const readme = exists("README.md") ? read("README.md") : "";
+// 文档里的测试数字必须和实际一致 —— 数字对不上，说明有人改了测试没改文档
+const countIn = (src, re) => {
+  const m = re.exec(src);
+  return m ? Number(m[1]) : null;
+};
+// 断言数是动态生成的（循环里 ok() 很多次），数 ok( 没有意义。
+// 真正有价值的是：README 和制作笔记这两个文档里的数字必须一致，
+// 不一致说明有人只改了一处（这种情况确实会发生）。
+const docNode = countIn(readme, /node verify\.mjs[^\n]*?(\d+)\s*项/);
+const docWeb = countIn(readme, /node verify-web\.mjs[^\n]*?(\d+)\s*项/);
+const noteNode = countIn(notes, /node verify\.mjs`?[^\n]*?(\d+)\s*项/);
+const noteWeb = countIn(notes, /node verify-web\.mjs`?[^\n]*?(\d+)\s*项/);
+soft(
+  `README 与制作笔记的核心测试数一致（${docNode} / ${noteNode}）`,
+  docNode !== null && docNode === noteNode,
+  "两个文档的 verify.mjs 数字不一致，请同步",
+);
+soft(
+  `README 与制作笔记的浏览器测试数一致（${docWeb} / ${noteWeb}）`,
+  docWeb !== null && docWeb === noteWeb,
+  "两个文档的 verify-web.mjs 数字不一致，请同步",
+);
+
 soft(
   `守卫数(${guardCount})与笔记体量匹配（笔记 ${notes.length} 字符）`,
   notes.length > guardCount * 400,

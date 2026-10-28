@@ -389,13 +389,27 @@
       renderStatus();
       msg("已导出 .opf（Datavyu 可以直接打开；ZIP 内含 project + db）", "ok");
     },
+    "export-analysis"() {
+      const text = store.toAnalysisCsv();
+      download(baseName() + ".analysis.csv", text, "text/csv;charset=utf-8");
+      const n = text.trim().split("\n").length - 1;
+      msg(`已导出分析用 CSV：${n} 行，时间列是 onset_ms/onset_s/offset_ms/offset_s/duration_ms/duration_s`, "ok");
+    },
+    "export-analysis-seconds"() {
+      download(baseName() + ".analysis.seconds.csv", store.toAnalysisCsv({ units: "seconds" }), "text/csv;charset=utf-8");
+      msg("已导出纯秒版分析 CSV：onset_s / offset_s / duration_s 三列，其余只有列名与值", "ok");
+    },
+    "export-cells-wide"() {
+      download(baseName() + ".analysis.wide.csv", store.toAnalysisCsv({ mode: "wide" }), "text/csv;charset=utf-8");
+      msg("已导出宽表分析 CSV：保留原版列名，并在 onset/offset 旁加了 _ms 与 _s 数字列", "ok");
+    },
     "export-cells"() {
       download(baseName() + ".cells.csv", store.toCellsCsv(), "text/csv;charset=utf-8");
-      msg("已导出「每行一个 cell」CSV（与原版 Export File… 一致，含行尾逗号）", "ok");
+      msg("已导出「每行一个 cell」CSV（原版格式，时间是 hh:mm:ss:mmm 文本；要算数请用「分析用 CSV」）", "ok");
     },
     "export-frames"() {
       download(baseName() + ".frames.csv", store.toFrameCsv(), "text/csv;charset=utf-8");
-      msg(`已导出逐帧 CSV（${store.fps} fps，共 ${store.toFrameCsv().trim().split("\n").length - 1} 帧）`, "ok");
+      msg(`已导出逐帧 CSV（${store.fps} fps，含 time 毫秒与 time_s 秒）`, "ok");
     },
     "export-json"() {
       download(baseName() + ".json", store.toJsonText(), "application/json");

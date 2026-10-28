@@ -53,8 +53,21 @@ python3 -m http.server 8793 --bind 127.0.0.1
 **文件**
 - `.opf` 工程读写（ZIP = `project` YAML + `db` "#4" 文本 + 播放器设置）
 - `#4` 数据库文本读写
-- 导出「每行一个 cell」CSV / 「逐帧」CSV / 本程序 JSON
 - 浏览器 `localStorage` 自动存档
+
+**导出（注意：时间格式是分开的）**
+
+| 导出 | 时间长什么样 | 适合谁 |
+|---|---|---|
+| **分析用 CSV**（长表，推荐） | `onset_ms / onset_s / offset_ms / offset_s / duration_ms / duration_s` 全是数字 | Excel 求和、R / Python `groupby`、SPSS |
+| **分析用 CSV · 只要秒** | `onset_s / offset_s / duration_s`，列最少 | R / SPSS 最省事 |
+| **分析用 CSV · 宽表** | 保留原版列名，另在 `onset`/`offset` 旁加 `_ms` / `_s` | 想用原版列名又要算数 |
+| **每行一个 cell CSV（原版格式）** | `hh:mm:ss:mmm` **文本** | 与 Datavyu 互通、归档 |
+| **逐帧 CSV** | `time`（毫秒整数）+ `time_s`（秒） | 逐帧建模 |
+| 本程序 JSON | 全部原始结构 | 备份 / 再导入 |
+
+> ⚠️ 原版 Datavyu 只导出 `hh:mm:ss:mmm` 文本，在 Excel 里是纯文本、不能求和。
+> 所以默认推荐用「分析用 CSV」。
 
 **隐私**
 - 没有后端、没有账号、不发任何网络请求；视频文件只在你的浏览器里解码播放
@@ -87,9 +100,9 @@ python3 -m http.server 8793 --bind 127.0.0.1
 ## 自检
 
 ```bash
-node verify.mjs        # 尺子：核心逻辑 78 项
-node verify-web.mjs    # 尺子：浏览器端 43 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
-node review.mjs        # 守门人：50 项，检查「以前踩过的坑现在还有没有人守着」
+node verify.mjs        # 尺子：核心逻辑 103 项
+node verify-web.mjs    # 尺子：浏览器端 79 项（自己拉起本机 Chrome，用 DevTools 协议断言真实 DOM）
+node review.mjs        # 守门人：54 项，检查「以前踩过的坑现在还有没有人守着」
 
 # 对已经部署好的线上站点跑同一套浏览器测试：
 node verify-web.mjs --url=https://dspan-code.github.io/datavyu-web/
