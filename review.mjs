@@ -196,6 +196,60 @@ soft(
  * 3. 仓库卫生（防止悄悄退化）
  * ══════════════════════════════════════════════════════════════════ */
 
+section("GitHub Pages 可达性（部署层，代码测试抓不到）");
+{
+  /* 真实踩过的坑：samples/ 目录原本叫 _samples/，
+   * GitHub Pages 用 Jekyll 构建，**默认忽略下划线开头的目录**，
+   * 于是线上 404，而本地自检全绿（本地是 http.server，没有 Jekyll）。
+   * 这个坑只能靠"检查发布布局"发现，所以放进守门人。 */
+  ok(".nojekyll 存在（禁用 Jekyll，防止下划线目录被吞）", exists(".nojekyll"));
+
+  const topDirs = fs.readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  const underscoreDirs = topDirs.filter((d) => d.startsWith("_") && d !== "_fixtures" && d !== ".git");
+  ok(
+    `没有会被 Pages 吞掉的下划线目录（${underscoreDirs.join(",") || "无"}）`,
+    underscoreDirs.length === 0,
+    "下划线开头的目录在 GitHub Pages 上默认 404；改名，或确认 .nojekyll 已生效",
+  );
+
+  // 样本清单必须真实存在且能被应用读到
+  ok("samples/samples.json 存在", exists("samples/samples.json"));
+  ok("samples/README.md 存在", exists("samples/README.md"));
+  if (exists("samples/samples.json")) {
+    let manifest = null;
+    try {
+      manifest = JSON.parse(read("samples/samples.json"));
+    } catch (e) {
+      ok("samples.json 是合法 JSON", false, e.message);
+    }
+    if (manifest) {
+      ok("samples.json 能解析", true);
+      const items = Array.isArray(manifest.samples) ? manifest.samples : [];
+      ok(`清单里有 ${items.length} 个样本`, items.length > 0);
+      for (const it of items) {
+        ok(`样本文件存在：${it.file}`, exists(path.join("samples", it.file)), "清单登记了但文件不在");
+      }
+      // 样本必须是合法 .opf（ZIP 头），否则点开会报错
+      for (const it of items) {
+        const p = path.join("samples", it.file);
+        if (!exists(p)) continue;
+        const head = fs.readFileSync(path.join(ROOT, p)).subarray(0, 4);
+        ok(`样本是 ZIP 容器：${it.file}`, head[0] === 0x50 && head[1] === 0x4b);
+      }
+    }
+  }
+
+  // 应用里引用的路径必须与目录名一致（改过名但漏改代码，这里会红）
+  const appSrc = exists("ui/app.js") ? read("ui/app.js") : "";
+  ok('ui/app.js 引用的是 samples/ 而不是旧的 _samples/',
+    appSrc.includes("./samples/") && !appSrc.includes("_samples/"));
+
+  // 线上/本地都要能被 fetch 到的关键资源
+  for (const f of ["index.html", "lib/analytics.js", "ui/chart.js", "ui/markstrip.js"]) {
+    ok(`发布文件存在：${f}`, exists(f));
+  }
+}
+
 section("仓库卫生");
 const JS_FILES = [];
 (function walk(dir) {

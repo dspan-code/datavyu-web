@@ -283,18 +283,18 @@
   /* ------------------------------------------------- 仓库里的样本工程
    *
    * 为什么要有：把 .opf 发给别人时，对方得先拿到文件再手动打开。
-   * 放进仓库 _samples/ + 一个 samples.json 清单，网页里点一下就能看。
+   * 放进仓库 samples/ + 一个 samples.json 清单，网页里点一下就能看。
    *
    * 兼容三种打开方式：
-   *   /index.html              -> _samples/samples.json
-   *   /datavyu-web/index.html  -> /datavyu-web/_samples/samples.json
+   *   /index.html              -> samples/samples.json
+   *   /datavyu-web/index.html  -> /datavyu-web/samples/samples.json
    *   file:///.../index.html   -> 浏览器禁止 fetch 本地文件，给明确提示
    */
   async function loadSamples() {
     const list = $("samples-list");
     const note = $("samples-note");
     list.innerHTML = "";
-    note.textContent = "正在读取 _samples/samples.json …";
+    note.textContent = "正在读取 samples/samples.json …";
 
     if (location.protocol === "file:") {
       note.textContent =
@@ -302,14 +302,14 @@
       return;
     }
 
-    const baseUrl = new URL("./_samples/", location.href).href;
+    const baseUrl = new URL("./samples/", location.href).href;
     let manifest;
     try {
       const res = await fetch(baseUrl + "samples.json", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       manifest = await res.json();
     } catch (e) {
-      note.textContent = `读不到样本清单（${e.message}）。把 .opf 放进仓库 _samples/ 并在 samples.json 里登记。`;
+      note.textContent = `读不到样本清单（${e.message}）。把 .opf 放进仓库 samples/ 并在 samples.json 里登记。`;
       return;
     }
 
@@ -318,7 +318,7 @@
       note.textContent = "清单里还没有样本。";
       return;
     }
-    note.textContent = `共 ${items.length} 个样本（来自仓库 _samples/ 目录）`;
+    note.textContent = `共 ${items.length} 个样本（来自仓库 samples/ 目录）`;
 
     for (const it of items) {
       const btn = document.createElement("button");
